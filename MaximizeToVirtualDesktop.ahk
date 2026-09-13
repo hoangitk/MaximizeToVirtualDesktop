@@ -1,10 +1,10 @@
 ; Purpose:
-; Bring macOS's green-button "maximize to full-screen virtual desktop" 
+; Bring macOS's green-button "maximize to full-screen virtual desktop"
 ; behavior to Windows 11.
 ; When triggered, the foreground window is moved to a brand-new virtual desktop
-; and maximized. Closing, un-maximizing, or toggling the hotkey again restores 
+; and maximized. Closing, un-maximizing, or toggling the hotkey again restores
 ; everything — the window returns to its original desktop and size, and the
-; temporary desktop is removed. 
+; temporary desktop is removed.
 ;
 #Requires AutoHotkey v2.0
 
@@ -84,7 +84,7 @@ VK_SHIFT := 0x10
 hMouseHook := 0
 MouseHookProc := CallbackCreate(LowLevelMouseProc, "F", 3)
 hMouseHook := DllCall("SetWindowsHookEx", "Int", WH_MOUSE_LL, "Ptr", MouseHookProc, "Ptr", DllCall("GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr")
-OnExit((*) => hMouseHook ? DllCall("UnhookWindowsHookEx", "Ptr", hMouseHook) : 0)
+OnExit(Cleanup)
 
 LowLevelMouseProc(nCode, wParam, lParam) {
     global WM_LBUTTONDOWN, VK_SHIFT, hMouseHook
@@ -169,3 +169,10 @@ ExitAndRestoreAll(*) {
     ExitApp()
 }
 
+Cleanup(*) {
+    global hMouseHook
+    if hMouseHook {
+        DllCall("UnhookWindowsHookEx", "Ptr", hMouseHook)
+        hMouseHook := 0
+    }
+}
