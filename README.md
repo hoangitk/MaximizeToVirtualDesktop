@@ -16,7 +16,7 @@ Depends on `VirtualDesktopAccessor.dll` (Ciantic/VirtualDesktopAccessor, Rust-ba
 
 ```powershell
 Get-Process AutoHotkey* -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Process "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" -ArgumentList '"d:\Dev\AHK\MaximizeToVirtualDesktop\MaxToVirtualDesktop.ahk"'
+Start-Process "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" -ArgumentList '"d:\Dev\AHK\MaximizeToVirtualDesktop\MaximizeToVirtualDesktop.ahk"'
 ```
 
 To check whether the script crashed and auto-restarted (look for a second process

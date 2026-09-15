@@ -7,6 +7,7 @@
 ; temporary desktop is removed.
 ;
 #Requires AutoHotkey v2.0
+#SingleInstance Force
 
 Persistent
 
@@ -15,40 +16,11 @@ Persistent
 ; small non-client hit targets like the maximize button are missed.
 DllCall("SetProcessDpiAwarenessContext", "Ptr", -4, "Int")
 
-SetWorkingDir(A_ScriptDir)
-
-TraySetIcon(A_ScriptDir "\app.ico")
-A_IconTip := "Maximize to Virtual Desktop"
-
-; Group AutoHotkey's standard debug items under their own submenu, so the
-; top-level tray menu stays focused on this script's own actions.
-AhkSubMenu := Menu()
-AhkSubMenu.Add("Reload Script", (*) => Reload())
-AhkSubMenu.Add("Edit Script", (*) => Edit())
-AhkSubMenu.Add("Open Script Folder", (*) => Run(A_ScriptDir))
-AhkSubMenu.Add()
-AhkSubMenu.Add("Suspend Hotkeys", (*) => Suspend(-1))
-AhkSubMenu.Add("Pause Script", (*) => Pause(-1))
-AhkSubMenu.Add()
-AhkSubMenu.Add("Exit (no restore)", (*) => ExitApp())
-
-A_TrayMenu.Delete()
-A_TrayMenu.Add("Restore All", RestoreAll)
-A_TrayMenu.Add()
-A_TrayMenu.Add("Exit", ExitAndRestoreAll)
-A_TrayMenu.Add()
-A_TrayMenu.Add("AHK", AhkSubMenu)
-A_TrayMenu.Default := "Restore All" ; double-clicking the tray icon restores instead of exiting
-
-; Set Icon
-try {
-    A_TrayMenu.SetIcon("Restore All", "imageres.dll", 230)  ; Icon 🔄️
-    A_TrayMenu.SetIcon("Exit", "shell32.dll", 220)          ; Icon 🚫
-}
-
-; Path to the DLL, relative to the script
+; Path to the DLL, relative to this file (also works when this file is included)
 ; Credit: https://github.com/Ciantic/VirtualDesktopAccessor/blob/rust/example.ah2
-VDA_PATH := A_ScriptDir . "\VirtualDesktopAccessor.dll"
+VDA_DIR := ""
+SplitPath(A_LineFile, , &VDA_DIR)
+VDA_PATH := VDA_DIR . "\VirtualDesktopAccessor.dll"
 hVirtualDesktopAccessor := DllCall("LoadLibrary", "Str", VDA_PATH, "Ptr")
 
 GetDesktopCountProc := DllCall("GetProcAddress", "Ptr", hVirtualDesktopAccessor, "AStr", "GetDesktopCount", "Ptr")
@@ -86,6 +58,7 @@ MouseHookProc := CallbackCreate(LowLevelMouseProc, "F", 3)
 hMouseHook := DllCall("SetWindowsHookEx", "Int", WH_MOUSE_LL, "Ptr", MouseHookProc, "Ptr", DllCall("GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr")
 OnExit(Cleanup)
 
+
 LowLevelMouseProc(nCode, wParam, lParam) {
     global WM_LBUTTONDOWN, VK_SHIFT, hMouseHook
     if (nCode >= 0 && wParam = WM_LBUTTONDOWN && (DllCall("GetAsyncKeyState", "Int", VK_SHIFT, "Short") & 0x8000)) {
@@ -119,10 +92,10 @@ HandleMacOSGreenButton(hwnd) {
     newNum := DllCall(CreateDesktopProc, "Int")
     DllCall(MoveWindowToDesktopNumberProc, "Ptr", hwnd, "Int", newNum, "Int")
     DllCall(GoToDesktopNumberProc, "Int", newNum, "Int")
-    WinMaximize(hwnd)
 
     ; Tracking
     mapTracking[hwnd] := { orig: cur, new: newNum }
+    SetTimer(WinMaximize.Bind(hwnd), -300)
 
     ; Virtual Desktop title
     appName := WinGetProcessName(hwnd)
@@ -136,14 +109,20 @@ HandleMacOSGreenButton(hwnd) {
 SetTimer(CheckWindows, 1000)
 
 CheckWindows() {
-    global mapTracking
+    ; WS_MAXIMIZE = 0x01000000
+    global IsWindowOnCurrentVirtualDesktopProc, mapTracking
     for hwnd, info in mapTracking.Clone() {
-        if !WinExist("ahk_id " hwnd)
-            continue
-        style := WinGetStyle(hwnd)
-        ; WS_MAXIMIZE = 0x01000000
-        if !(style & 0x01000000)
+        if !DllCall("IsWindow", "Ptr", hwnd, "Int") {
             RestoreWindow(hwnd, info)
+            continue
+        }
+        if !DllCall(IsWindowOnCurrentVirtualDesktopProc, "Ptr", hwnd, "Int") {
+            continue
+        }
+        if 0x01000000 & WinGetStyle(hwnd) {
+            continue
+        }
+        RestoreWindow(hwnd, info)
     }
 }
 
@@ -176,3 +155,44 @@ Cleanup(*) {
         hMouseHook := 0
     }
 }
+
+;@region Hotkey
+; Ctrl+Alt+Shift+X
+;^!+x:: ToggleForegroundWindow()
+
+; Win+Shift+Enter
+#+Enter:: ToggleForegroundWindow()
+
+ToggleForegroundWindow() {
+    global mapTracking
+    hwnd := WinExist("A")
+    if !hwnd {
+        return
+    }
+    if mapTracking.Has(hwnd) {
+        RestoreWindow(hwnd, mapTracking[hwnd])
+        return
+    }
+    HandleMacOSGreenButton(hwnd)
+}
+;@endregion
+
+;@region Tray Menu
+TraySetIcon(A_ScriptDir "\app.ico")
+A_IconTip := "Maximize to Virtual Desktop"
+
+A_TrayMenu.Delete()
+; A_TrayMenu.Add("Ctrl + Alt + Shift + X", (*) => {})
+A_TrayMenu.Add("Win + Shift + Enter", (*) => {})
+A_TrayMenu.Add("Restore All", RestoreAll)
+A_TrayMenu.Add()
+A_TrayMenu.Add("Exit", ExitAndRestoreAll)
+A_TrayMenu.Default := "Restore All" ; double-clicking the tray icon restores instead of exiting
+
+; Set Icon
+try {
+    A_TrayMenu.SetIcon("Win + Shift + Enter", "imageres.dll", 229)
+    A_TrayMenu.SetIcon("Restore All", "imageres.dll", 230)  ; Icon 🔄️
+    A_TrayMenu.SetIcon("Exit", "shell32.dll", 220)          ; Icon 🚫
+}
+;@endregion
